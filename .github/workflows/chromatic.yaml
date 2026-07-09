@@ -19,7 +19,7 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --save-dev chromatic
 
       - name: Run Chromatic UI tests
         env:
