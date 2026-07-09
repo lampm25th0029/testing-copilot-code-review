@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo App</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📝 Task Manager</h1>
+            <p>Quản lý công việc đơn giản</p>
+        </header>
+
+        <div class="input-section">
+            <input 
+                type="text" 
+                id="taskInput" 
+                placeholder="Nhập công việc cần làm..."
+                autocomplete="off"
+            >
+            <button id="addBtn">Thêm</button>
+        </div>
+
+        <div class="stats">
+            <span id="taskCount">0 công việc</span>
+            <button id="clearBtn">Xóa tất cả</button>
+        </div>
+
+        <ul id="taskList" class="task-list">
+        </ul>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

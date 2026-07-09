@@ -1,0 +1,8 @@
+{
+  "name": "testing-copilot-code-review",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "chromatic": "npx chromatic --project-token $CHROMATIC_PROJECT_TOKEN"
+  }
+}
