@@ -15,7 +15,7 @@ jobs:
       - name: Get PR diff
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr diff ${{ github.event.pull_request.number }} > diff.txt
+        run: gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} > diff.txt
 
       - name: Send diff to n8n and get review
         run: |
