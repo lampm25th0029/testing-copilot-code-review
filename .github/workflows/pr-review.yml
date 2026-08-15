@@ -1,0 +1,37 @@
+name: Auto Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get PR diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr diff ${{ github.event.pull_request.number }} > diff.txt
+
+      - name: Send diff to n8n and get review
+        run: |
+          DIFF_CONTENT=$(jq -Rs . < diff.txt)
+          curl -s -X POST "$N8N_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"pr_number\": ${{ github.event.pull_request.number }}, \"repo\": \"${{ github.repository }}\", \"diff\": $DIFF_CONTENT}" \
+            -o response.json
+          cat response.json
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+
+      - name: Extract review text
+        run: jq -r '.text' response.json > review.txt
+
+      - name: Post comment to PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file review.txt
