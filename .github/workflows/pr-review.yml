@@ -11,6 +11,33 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
+    env:
+      GUIDELINES: |
+        # Code Review Guidelines
+
+        ## Security (highest priority)
+        - Never hardcode secrets, API keys, passwords, or tokens — use environment variables instead.
+        - Never concatenate strings directly into SQL queries — always use parameterized queries / prepared statements.
+        - Never log sensitive data (card numbers, passwords, tokens, PII).
+        - Validate all external input (request body, query params, file uploads) before use.
+
+        ## Error handling
+        - Never divide by a value without checking for zero first.
+        - Never access an array/object element without checking it exists (avoid crashes on empty arrays or null/undefined fields).
+        - Every async call (async/await, promises) must have try/catch or .catch().
+        - Never swallow errors silently (empty catch blocks with no logging/handling).
+
+        ## Naming & style
+        - Variable/function names should be clear and in English, camelCase for JS/TS.
+        - Functions should do one thing, ideally under 40-50 lines.
+        - No dead code or leftover console.log statements before merging.
+
+        ## Other
+        - Significant logic changes should come with tests (if the repo has a test suite).
+        - Breaking changes must be clearly noted in the PR description.
+
+        When reviewing, prioritize in this order: Security > Logic bugs > Error handling > Style. Skip minor style nitpicks if the code is functionally correct and doesn't violate the security/error-handling rules above.
+
     steps:
       - name: Get PR diff
         env:
@@ -20,9 +47,10 @@ jobs:
       - name: Send diff to n8n and get review
         run: |
           DIFF_CONTENT=$(jq -Rs . < diff.txt)
+          GUIDELINES_CONTENT=$(jq -Rs . <<< "$GUIDELINES")
           curl -s -X POST "$N8N_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"pr_number\": ${{ github.event.pull_request.number }}, \"repo\": \"${{ github.repository }}\", \"diff\": $DIFF_CONTENT}" \
+            -d "{\"pr_number\": ${{ github.event.pull_request.number }}, \"repo\": \"${{ github.repository }}\", \"diff\": $DIFF_CONTENT, \"guidelines\": $GUIDELINES_CONTENT}" \
             -o response.json
           cat response.json
         env:
