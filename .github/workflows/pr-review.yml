@@ -11,27 +11,65 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
+    env:
+      GUIDELINES: |
+        # Code Review Guidelines
+
+        ## Security (highest priority)
+        - Never hardcode secrets, API keys, passwords, or tokens — use environment variables instead.
+        - Never concatenate strings directly into SQL queries — always use parameterized queries / prepared statements.
+        - Never log sensitive data (card numbers, passwords, tokens, PII).
+        - Validate all external input (request body, query params, file uploads) before use.
+
+        ## Error handling
+        - Never divide by a value without checking for zero first.
+        - Never access an array/object element without checking it exists (avoid crashes on empty arrays or null/undefined fields).
+        - Every async call (async/await, promises) must have try/catch or .catch().
+        - Never swallow errors silently (empty catch blocks with no logging/handling).
+
+        ## Naming & style
+        - Variable/function names should be clear and in English, camelCase for JS/TS.
+        - Functions should do one thing, ideally under 40-50 lines.
+        - No dead code or leftover console.log statements before merging.
+
+        ## Other
+        - Significant logic changes should come with tests (if the repo has a test suite).
+        - Breaking changes must be clearly noted in the PR description.
+
+        When reviewing, prioritize in this order: Security > Logic bugs > Error handling > Style. Skip minor style nitpicks if the code is functionally correct and doesn't violate the security/error-handling rules above.
+
     steps:
       - name: Get PR diff
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr diff ${{ github.event.pull_request.number }} > diff.txt
+        run: gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} > diff.txt
 
       - name: Send diff to n8n and get review
         run: |
           DIFF_CONTENT=$(jq -Rs . < diff.txt)
+          GUIDELINES_CONTENT=$(jq -Rs . <<< "$GUIDELINES")
           curl -s -X POST "$N8N_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"pr_number\": ${{ github.event.pull_request.number }}, \"repo\": \"${{ github.repository }}\", \"diff\": $DIFF_CONTENT}" \
+            -d "{\"pr_number\": ${{ github.event.pull_request.number }}, \"repo\": \"${{ github.repository }}\", \"diff\": $DIFF_CONTENT, \"guidelines\": $GUIDELINES_CONTENT}" \
             -o response.json
           cat response.json
         env:
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
 
-      - name: Extract review text
-        run: jq -r '.text' response.json > review.txt
-
-      - name: Post comment to PR
+      - name: Post review comments
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} > diff.txt
+        run: |
+          ISSUES=$(jq -c '.issues // .output.issues // []' response.json)
+          COUNT=$(echo "$ISSUES" | jq 'length')
+          if [ "$COUNT" -eq 0 ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "No significant issues found."
+            exit 0
+          fi
+          COMMENTS=$(echo "$ISSUES" | jq '[.[] | {path: .file, line: .line, side: "RIGHT", body: ("**" + .severity + "**: " + .message)}]')
+          echo "{\"commit_id\": \"${{ github.event.pull_request.head.sha }}\", \"event\": \"COMMENT\", \"comments\": $COMMENTS}" > review.json
+          if ! gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews --input review.json; then
+            echo "Inline review failed (likely a line-number mismatch) — falling back to a summary comment."
+            SUMMARY=$(echo "$ISSUES" | jq -r '.[] | "- **\(.severity)** \(.file):\(.line) — \(.message)"')
+            gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "$SUMMARY"
+          fi
