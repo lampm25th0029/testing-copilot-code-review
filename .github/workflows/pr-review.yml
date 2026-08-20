@@ -56,10 +56,20 @@ jobs:
         env:
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
 
-      - name: Extract review text
-        run: jq -r '.text' response.json > review.txt
-
-      - name: Post comment to PR
+      - name: Post review comments
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file review.txt
+        run: |
+          ISSUES=$(jq -c '.issues // .output.issues // []' response.json)
+          COUNT=$(echo "$ISSUES" | jq 'length')
+          if [ "$COUNT" -eq 0 ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "No significant issues found."
+            exit 0
+          fi
+          COMMENTS=$(echo "$ISSUES" | jq '[.[] | {path: .file, line: .line, side: "RIGHT", body: ("**" + .severity + "**: " + .message)}]')
+          echo "{\"commit_id\": \"${{ github.event.pull_request.head.sha }}\", \"event\": \"COMMENT\", \"comments\": $COMMENTS}" > review.json
+          if ! gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews --input review.json; then
+            echo "Inline review failed (likely a line-number mismatch) — falling back to a summary comment."
+            SUMMARY=$(echo "$ISSUES" | jq -r '.[] | "- **\(.severity)** \(.file):\(.line) — \(.message)"')
+            gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "$SUMMARY"
+          fi
